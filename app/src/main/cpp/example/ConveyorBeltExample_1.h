@@ -44,12 +44,20 @@ public:
 
 private:
 	GLuint m_TextureId;
+	GLuint m_MixProgramObj;
+	GLuint m_MixTextureId0;
+	GLuint m_MixTextureId1;
+	GLuint m_MixTextureId2;
+	GLuint m_MixFrameBufferId;
 	GLint m_MVPMatLoc;
-	GLuint m_VaoId;
-	GLuint m_VboIds[3];
+	GLint m_MixMVPMatLoc;
+	GLuint m_VaoId0;
+	GLuint m_VaoId1;
+	GLuint m_VboIds[4];
 	NativeImage m_RenderImage;
 	NativeImage m_SrcImage;
     glm::mat4 m_MVPMatrix;
+    glm::mat4 m_MVPIdMatrix;
 
 	int m_frameIndex;
 	int m_loopCount;

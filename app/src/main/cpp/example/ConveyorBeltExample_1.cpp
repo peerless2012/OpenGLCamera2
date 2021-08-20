@@ -17,7 +17,8 @@ ConveyorBeltExample_1::ConveyorBeltExample_1()
 	m_MVPMatLoc = GL_NONE;
 
     m_TextureId = GL_NONE;
-	m_VaoId = GL_NONE;
+	m_VaoId0 = GL_NONE;
+	m_VaoId1 = GL_NONE;
 
     m_frameIndex = 0;
 	m_loopCount = 0;
@@ -62,15 +63,16 @@ void ConveyorBeltExample_1::Init()
             "in vec2 v_texCoord;\n"
             "layout(location = 0) out vec4 outColor;\n"
             "uniform sampler2D u_texture;\n"
-            "uniform float u_offset;\n"
-            "uniform vec2 u_texSize;\n"
             "\n"
             "void main()\n"
             "{\n"
             "    outColor = texture(u_texture, v_texCoord);\n"
             "}";
 
+
 	m_ProgramObj = GLUtils::CreateProgram(vShaderStr, fShaderStr);
+
+
     GO_CHECK_GL_ERROR();
 	if (m_ProgramObj)
 	{
@@ -80,6 +82,50 @@ void ConveyorBeltExample_1::Init()
 	{
 		LOGCATE("ConveyorBeltExample_1::OnSurfaceCreated create program fail");
 	}
+	/*------------------------------------------------  混合  ---------------------------------------------------*/
+
+    char vMixShaderStr[] =
+            "#version 300 es\n"
+            "layout(location = 0) in vec4 a_position;\n"
+            "layout(location = 1) in vec2 a_texCoord;\n"
+            "uniform mat4 u_MVPMatrix;\n"
+            "out vec2 v_texCoord;\n"
+            "void main()\n"
+            "{\n"
+            "    gl_Position = u_MVPMatrix * a_position;\n"
+            "    v_texCoord = a_texCoord;\n"
+            "}";
+
+    char fMixShaderStr[] =
+            "#version 300 es\n"
+            "precision mediump float;\n"
+            "in vec2 v_texCoord;\n"
+            "layout(location = 0) out vec4 outColor;\n"
+            "uniform sampler2D u_texture;\n"
+            "uniform sampler2D u_pre_texture;\n"
+            "uniform float u_offset;\n"
+            "void main()\n"
+            "{\n"
+            "   if(v_texCoord.x > 0.5) {\n"
+            "       vec2 tmp = vec2(v_texCoord.x - u_offset, v_texCoord.y);\n"
+            "       outColor = texture(u_pre_texture, tmp);\n"
+//            "       outColor = texture(u_texture, v_texCoord);\n"
+            "   } else {\n"
+            "       outColor = texture(u_texture, v_texCoord);\n"
+            "   }\n"
+            "}";
+
+	m_MixProgramObj = GLUtils::CreateProgram(vMixShaderStr, fMixShaderStr);
+
+    GO_CHECK_GL_ERROR();
+    if (m_MixProgramObj)
+    {
+        m_MixMVPMatLoc = glGetUniformLocation(m_MixProgramObj, "u_MVPMatrix");
+    }
+    else
+    {
+        LOGCATE("ConveyorBeltExample_1::OnSurfaceCreated create program fail");
+    }
 
     GLfloat verticesCoords[] = {
             -1.0f,  1.0f, 0.0f,  // Position 0
@@ -88,29 +134,41 @@ void ConveyorBeltExample_1::Init()
             1.0f,   1.0f, 0.0f,  // Position 3
     };
 
-    GLfloat textureCoords[] = {
+    // 顶点在上，渲染视频、图片用
+    GLfloat textureCoords0[] = {
             0.0f,  0.0f,        // TexCoord 0
             0.0f,  1.0f,        // TexCoord 1
             1.0f,  1.0f,        // TexCoord 2
             1.0f,  0.0f         // TexCoord 3
     };
 
+    // 顶点在下，渲染纹理用
+    GLfloat textureCoords1[] = {
+            0.0f,  1.0f,        // TexCoord 1
+            0.0f,  0.0f,        // TexCoord 0
+            1.0f,  0.0f,         // TexCoord 3
+            1.0f,  1.0f,        // TexCoord 2
+    };
+
     GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
     // Generate VBO Ids and load the VBOs with data
-    glGenBuffers(3, m_VboIds);
+    glGenBuffers(4, m_VboIds);
     glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[0]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(verticesCoords), verticesCoords, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(textureCoords), textureCoords, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(textureCoords0), textureCoords0, GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_VboIds[2]);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(textureCoords1), textureCoords1, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_VboIds[3]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     // Generate VAO Id
-    glGenVertexArrays(1, &m_VaoId);
-    glBindVertexArray(m_VaoId);
+    glGenVertexArrays(1, &m_VaoId0);
+    glBindVertexArray(m_VaoId0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[0]);
     glEnableVertexAttribArray(0);
@@ -122,20 +180,29 @@ void ConveyorBeltExample_1::Init()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (const void *)0);
     glBindBuffer(GL_ARRAY_BUFFER, GL_NONE);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_VboIds[2]);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_VboIds[3]);
 
     glBindVertexArray(GL_NONE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    memcpy(m_RenderImage.ppPlane[0], m_SrcImage.ppPlane[0], m_SrcImage.width * m_SrcImage.height * 4);
+    // Generate VAO Id
+    glGenVertexArrays(1, &m_VaoId1);
+    glBindVertexArray(m_VaoId1);
 
-//    for (int i = 0; i < BF_TEXTURE_NUM; ++i) {
-//        glActiveTexture(GL_TEXTURE0 + i);
-//        glBindTexture(GL_TEXTURE_2D, m_TextureIds[i]);
-//        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_TexImages[i].width, m_TexImages[i].height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_TexImages[i].ppPlane[0]);
-//        glBindTexture(GL_TEXTURE_2D, GL_NONE);
-//    }
+    glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[0]);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (const void *)0);
+    glBindBuffer(GL_ARRAY_BUFFER, GL_NONE);
 
+    glBindBuffer(GL_ARRAY_BUFFER, m_VboIds[2]);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (const void *)0);
+    glBindBuffer(GL_ARRAY_BUFFER, GL_NONE);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_VboIds[3]);
+
+    glBindVertexArray(GL_NONE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 }
 
 void ConveyorBeltExample_1::LoadImage(NativeImage *pImage)
@@ -183,52 +250,123 @@ void ConveyorBeltExample_1::Draw(int width, int height)
     glClearColor(1.0f,1.0f,1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-	if(m_ProgramObj == GL_NONE || m_TextureId == GL_NONE) return;
+    if (m_MixFrameBufferId == GL_NONE) {
+        glGenFramebuffers(1, &m_MixFrameBufferId);
+
+        glGenTextures(1, &m_MixTextureId0);
+        glBindTexture(GL_TEXTURE_2D, m_MixTextureId0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, (const void *) nullptr);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, GL_NONE);
+
+        glGenTextures(1, &m_MixTextureId1);
+        glBindTexture(GL_TEXTURE_2D, m_MixTextureId1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, (const void *) nullptr);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, GL_NONE);
+
+        glGenTextures(1, &m_MixTextureId2);
+        glBindTexture(GL_TEXTURE_2D, m_MixTextureId2);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, (const void *) nullptr);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, GL_NONE);
+    }
+
+	if(m_ProgramObj == GL_NONE || m_TextureId == GL_NONE
+	|| m_MixFrameBufferId == GL_NONE || m_MixProgramObj == GL_NONE
+	|| m_MixTextureId0 == GL_NONE || m_MixTextureId1 == GL_NONE) return;
     LOGCATE("ConveyorBeltExample_1::Draw[w, h]=[%d, %d]",width, height);
 
+    // 由于摄像头数据需要旋转的，因此先把摄像头数据摆正
+    glBindFramebuffer(GL_FRAMEBUFFER, m_MixFrameBufferId);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_MixTextureId0, 0);
     UpdateMVPMatrix(m_MVPMatrix, m_TransformMatrix);
-
-    unique_lock<mutex> lock(m_Lock);
-    m_frameIndex ++;
-
-	// Use the program object
-	glUseProgram (m_ProgramObj);
+    // draw fbo tex
+    // Use the program object
+    glUseProgram (m_ProgramObj);
     GO_CHECK_GL_ERROR();
-	glBindVertexArray(m_VaoId);
+    glBindVertexArray(m_VaoId0);
     GO_CHECK_GL_ERROR();
-	glUniformMatrix4fv(m_MVPMatLoc, 1, GL_FALSE, &m_MVPMatrix[0][0]);
+    glUniformMatrix4fv(m_MVPMatLoc, 1, GL_FALSE, &m_MVPMatrix[0][0]);
     GO_CHECK_GL_ERROR();
 
-	float offset = (m_frameIndex % BF_LOOP_COUNT) * 1.0f / BF_LOOP_COUNT;
-	if(m_frameIndex % BF_LOOP_COUNT == 0)
-		m_loopCount ++;
-
-    memcpy(m_RenderImage.ppPlane[0], m_SrcImage.ppPlane[0], m_RenderImage.width * m_RenderImage.height * 4 / 2);
-    int bannerHeight = m_RenderImage.height / 2 / m_bannerNum;
-    int bannerPixelsBufSize = m_RenderImage.width * bannerHeight * 4;
-
-    uint8 *pBuf = m_RenderImage.ppPlane[0] + m_RenderImage.width * m_RenderImage.height * 4 / 2; //传送带分界线
-
-    for (int i = m_bannerNum - 1; i >= 1; --i) {
-        memcpy(pBuf + i*bannerPixelsBufSize, pBuf + (i - 1)*bannerPixelsBufSize, bannerPixelsBufSize);
-    }
-    memcpy(pBuf, pBuf - bannerPixelsBufSize, bannerPixelsBufSize);
-
+    // 绑定数据到纹理上
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_TextureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_RenderImage.width, m_RenderImage.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_RenderImage.ppPlane[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_RenderImage.width, m_RenderImage.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_SrcImage.ppPlane[0]);
     glBindTexture(GL_TEXTURE_2D, GL_NONE);
-
     GO_CHECK_GL_ERROR();
-	GLUtils::setFloat(m_ProgramObj, "u_offset", offset);
-
-    GLUtils::setVec2(m_ProgramObj, "u_texSize", m_RenderImage.width,  m_RenderImage.height);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_TextureId);
     GLUtils::setInt(m_ProgramObj, "u_texture", 0);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const void *)0);
     glBindVertexArray(GL_NONE);
+    GO_CHECK_GL_ERROR();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    unique_lock<mutex> lock(m_Lock);
+    m_frameIndex ++;
+
+    GLint preTex = m_frameIndex % 2 == 0 ? m_MixTextureId1 : m_MixTextureId2;
+    GLint fboTex = m_frameIndex % 2 == 0 ? m_MixTextureId2 : m_MixTextureId1;
+    glBindFramebuffer(GL_FRAMEBUFFER, m_MixFrameBufferId);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboTex, 0);
+
+	// Use the program object
+	glUseProgram (m_MixProgramObj);
+    GO_CHECK_GL_ERROR();
+	glBindVertexArray(m_VaoId1);
+    GO_CHECK_GL_ERROR();
+	glUniformMatrix4fv(m_MixMVPMatLoc, 1, GL_FALSE, &m_MVPIdMatrix[0][0]);
+    GO_CHECK_GL_ERROR();
+
+	GLUtils::setFloat(m_MixProgramObj, "u_offset", 0.01);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_MixTextureId0);
+    GLUtils::setInt(m_MixProgramObj, "u_texture", 0);
+    GO_CHECK_GL_ERROR();
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, preTex);
+    GLUtils::setInt(m_MixProgramObj, "u_pre_texture", 1);
+    GO_CHECK_GL_ERROR();
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const void *)0);
+    GO_CHECK_GL_ERROR();
+
+    glBindVertexArray(GL_NONE);
+    GO_CHECK_GL_ERROR();
+
+    // unbind fbo
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GO_CHECK_GL_ERROR();
+
+    // draw fbo tex
+    // Use the program object
+    glUseProgram (m_ProgramObj);
+    GO_CHECK_GL_ERROR();
+    glBindVertexArray(m_VaoId1);
+    GO_CHECK_GL_ERROR();
+    glUniformMatrix4fv(m_MVPMatLoc, 1, GL_FALSE, &m_MVPIdMatrix[0][0]);
+    GO_CHECK_GL_ERROR();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, fboTex);
+    GLUtils::setInt(m_ProgramObj, "u_texture", 0);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const void *)0);
+    glBindVertexArray(GL_NONE);
+    GO_CHECK_GL_ERROR();
 }
 
 void ConveyorBeltExample_1::Destroy()
@@ -237,7 +375,8 @@ void ConveyorBeltExample_1::Destroy()
 	{
 		glDeleteProgram(m_ProgramObj);
 		glDeleteBuffers(3, m_VboIds);
-		glDeleteVertexArrays(1, &m_VaoId);
+		glDeleteVertexArrays(1, &m_VaoId0);
+		glDeleteVertexArrays(1, &m_VaoId1);
 		glDeleteTextures(1, &m_TextureId);
 	}
 }
